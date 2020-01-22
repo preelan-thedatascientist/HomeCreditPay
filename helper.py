@@ -1,56 +1,66 @@
-Dict = {'$INSERT':('$INCLUDE'),
-'OPEN':('OPF'),
-'READ':('F.READ','CACHE.READ'),
-'F.READ':('CACHE.READ')
+Dict = {'$INSERT':('$INCLUDE'), #2
+'OPEN':('OPF'), #3
+'READ':('F.READ','CACHE.READ'), #4
+'F.READ':('CACHE.READ'), #6
+'READU':('F.READU'), #7
+'DGR':('F.READ'), 
+'READV':('F.READV'), #8
+'MATREADU':('F.MATREADU'), #9
+'WRITE':('F.WRITE'), #10
+'':(),#11
+'RELEASE':('F.RELEASE'), #12
+'EXECUTE':('EB.READLIST'), #13
+'READLIST':('EB.READLIST'),
+'PERFORM':('EB.READLIST'),
+'READNEXT':('LOOP', 'REMOVE'), #14
+'HUSH ON':(), #15
+'HUSH OFF':(), #15
+'GET.LOC.REF':('MULTI.GET.LOC.REF'), #16
+'':(), #17
+'FX.COLLATERAL':('EB.CONTRACT.BALANCES'), #18
+'FX.COLLATERAL.RIGHT':('EB.CONTRACT.BALANCES'),
+'AC.COLLATERAL':('EB.CONTRACT.BALANCES'),
+'AC.COLLATERAL.RIGHT':('EB.CONTRACT.BALANCES'),
+'ID.COLLATERAL':('EB.CONTRACT.BALANCES'),
+'ID.COLLATERAL.RIGHT':('EB.CONTRACT.BALANCES'),
+'MM.COLATERAL':('EB.CONTRACT.BALANCES'),
+'MM.COLLATERAL.RIGHT':('EB.CONTRACT.BALANCES'),
+'MD.COLLATERAL':('EB.CONTRACT.BALANCES'),
+'MD.COLLATERAL.RIGHT':('EB.CONTRACT.BALANCES'),
+'MG.COLLATERAL':('EB.CONTRACT.BALANCES'),
+'MG.COLLATERAL.RIGHT':('EB.CONTRACT.BALANCES'),
+'MG.BALANCES':('EB.CONTRACT.BALANCES'),
+'SL.COLLATERAL.RIGHT':('EB.CONTRACT.BALANCES'),
+'FD.COLLATERAL':('EB.CONTRACT.BALANCES'),
+'RE.CONSOL.DX':('EB.CONTRACT.BALANCES'),
+'RE.CONSOL.BL':('EB.CONTRACT.BALANCES'),
+'RE.CONSOL.INDF':('EB.CONTRACT.BALANCES'),
+'RE.CONSOL.XX':('EB.CONTRACT.BALANCES'),
+'ACCT.ACCT.ACTIVITY':('EB.CONTRACT.BALANCES'),
+'DX.TRADE':('EB.CONTRACT.BALANCES'),
+'CONSOL.KEY':('EB.CONTRACT.BALANCES'),
+'RE. I.D ACC.BAL':('EB.CONTRACT.BALANCES'),
+'RE.MG.BALANCES':('EB.CONTRACT.BALANCES'),
+'OFS.GLOBUS.MANAGER':('OFS.POST.MESSAGE', 'OFS.PROCESS.MANAGER'), #19
+'RE.I.D.ACC.BAL':('LMM.ACCOUNT.BALANCES', ''), #20
+'':(), #21
+'ACCT.STMT.ENTRY':('STMT.PRINTED'), #22
+'ACCT.STMT2.ENTRY':('STMT.PRINTED'),
+'':(), #23
+'':(),
+'':(), #24
+'':(), #25
+'SCCOUNT.DATE':('ACCOUNT'), #26
+'':(), #27
+'':(),
+'':(), #28
+'':(),
+'':(), #???
+'CONSOL.ENT.TODAY':('RE.SPEC.ENT.TODAY'), #29
+'AC.CONSOL.KEY':('EB.CONSOL.BALANCES'), #31
+'LD.27.CONSOL.KEY':('EB.CONTRACT.BALANCES'), #32
+'':(), #33
+'':(), 
+'AC.CONTINGENT.BAL.CR':('AC.GET.ECB.BALANCE'), #34
+'AC.CONTINGENT.BAL.DR':('AC.GET.ECB.BALANCE')
 }
-
-global s, w
-
-def file_to_code_convertion():
-    indexes = []
-    with open('original_code.txt') as f:
-        lines = f.readlines()
-
-    for row, line in enumerate(lines, 1):
-        print('Before', line)
-        words = line.split(' ')
-        for i in range(len(words)):
-            if words[i] in Dict.keys():
-                words[i] = Dict[words[i]]
-                w = words[i]
-                print('Changed:', words[i])
-                #print('Line', line)
-                if type(words[i]) == tuple:
-                    print("Tuple",list(enumerate(words[i])))
-                    value_to_insert = int(input("Enter the number to insert the value:"))
-                    for value_to_insert, obj in enumerate(words[i]):
-                        words[i] = obj
-                        w = words[i]
-                    #print('Line', line)
-
-
-
-        s = ' '
-        with open('converted_code.txt','a+') as F:
-            sentence = s.join(words)
-            F.write(sentence)
-            print("Final", sentence)
-            #print('Row', row)
-            #print('String Start', sentence.find(w))
-            #print('String End', int(sentence.find(w)) + len(w))
-            if sentence.find(w) != -1:
-                start = '{0}.{1}'.format(row, sentence.find(w))
-                end = '{0}.{1}'.format(row, int(sentence.find(w)) + len(w))
-                start_end_index = tuple([start, end])
-                print(indexes.append(start_end_index))
-            print('---------------------------')
-    print("Final Changed Indexes:", indexes)
-    return indexes
-
-
-
-
-def new_code():
-    with open('converted_code.txt','r') as read_code:
-        code = read_code.read()
-    return code
