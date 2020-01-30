@@ -1,0 +1,492 @@
+     SUBROUTINE DSP.PARAMETER
+
+*************************************************************************
+*
+* DSP.PARAMETER - Deferred Sales Processing Parameters
+*
+* Programmer: Christopher John B. Dizon
+* Date      : 25 November 1998
+*             Al Rajhi Bank
+*
+* GPJuson19990520, revised
+*************************************************************************
+
+$INSERT I_COMMON
+$INSERT I_EQUATE
+$INSERT I_F.COMPANY
+$INSERT I_F.ACCOUNT
+$INSERT I_F.CURRENCY
+$INSERT I_F.TRANSACTION
+$INSERT I_F.CATEGORY
+$INSERT I_F.CUSTOMER
+$INSERT I_F.CURRENCY.MARKET
+$INSERT I_F.AUTO.ID.START
+$INSERT I_F.FT.COMMISSION.TYPE
+$INSERT I_F.INTEREST.BASIS
+$INSERT I_F.DEAL.SLIP.FORMAT
+$INSERT I_F.DSP.PARAMETER
+
+*************************************************************************
+
+      GOSUB DEFINE.PARAMETERS
+
+      IF LEN(V$FUNCTION) GT 1 THEN
+         GOTO V$EXIT
+      END
+
+      CALL MATRIX.UPDATE
+
+      GOSUB INITIALISE                   ; * Special Initialising
+
+*************************************************************************
+
+* Main Program Loop
+
+      LOOP
+
+         CALL RECORDID.INPUT
+
+      UNTIL (MESSAGE EQ 'RET')
+
+         V$ERROR = ''
+
+         IF MESSAGE EQ 'NEW FUNCTION' THEN
+
+            GOSUB CHECK.FUNCTION         ; * Special Editing of Function
+
+            IF V$FUNCTION EQ 'E' OR V$FUNCTION EQ 'L' THEN
+               CALL FUNCTION.DISPLAY
+               V$FUNCTION = ''
+            END
+
+         END ELSE
+
+REM >       GOSUB CHECK.ID                  ;* Special Editing of ID
+REM >       IF ERROR THEN GOTO MAIN.REPEAT
+
+            CALL RECORD.READ
+
+            IF MESSAGE EQ 'REPEAT' THEN
+               GOTO MAIN.REPEAT
+            END
+
+            CALL MATRIX.ALTER
+
+REM >       GOSUB CHECK.RECORD              ;* Special Editing of Record
+REM >       IF ERROR THEN GOTO MAIN.REPEAT
+
+REM >       GOSUB PROCESS.DISPLAY           ;* For Display applications
+
+            LOOP
+               GOSUB PROCESS.FIELDS      ; * ) For Input
+               GOSUB PROCESS.MESSAGE     ; * ) Applications
+            WHILE (MESSAGE EQ 'ERROR') REPEAT
+
+         END
+
+MAIN.REPEAT:
+      REPEAT
+
+V$EXIT:
+      RETURN                             ; * From main program
+
+*************************************************************************
+*                      S u b r o u t i n e s                            *
+*************************************************************************
+
+PROCESS.FIELDS:
+
+* Input or display the record fields.
+
+      LOOP
+         IF SCREEN.MODE EQ 'MULTI' THEN
+            IF FILE.TYPE EQ 'I' THEN
+               CALL FIELD.MULTI.INPUT
+            END ELSE
+               CALL FIELD.MULTI.DISPLAY
+            END
+         END ELSE
+            IF FILE.TYPE EQ 'I' THEN
+               CALL FIELD.INPUT
+            END ELSE
+               CALL FIELD.DISPLAY
+            END
+         END
+
+      WHILE NOT(MESSAGE)
+
+         GOSUB CHECK.FIELDS              ; * Special Field Editing
+
+         IF T.SEQU NE '' THEN T.SEQU<-1> = A + 1
+
+      REPEAT
+
+      RETURN
+
+*************************************************************************
+
+PROCESS.MESSAGE:
+
+* Processing after exiting from field input (PF5)
+
+      IF MESSAGE EQ 'VAL' THEN
+         MESSAGE = ''
+         BEGIN CASE
+            CASE V$FUNCTION EQ 'D'
+REM >          GOSUB CHECK.DELETE              ;* Special Deletion checks
+            CASE V$FUNCTION EQ 'R'
+REM >          GOSUB CHECK.REVERSAL            ;* Special Reversal checks
+            CASE OTHERWISE
+REM >          GOSUB CROSS.VALIDATION          ;* Special Cross Validation
+         END CASE
+REM >    IF NOT(ERROR) THEN
+REM >       GOSUB BEFORE.UNAU.WRITE         ;* Special Processing before write
+REM >    END
+         IF NOT(V$ERROR) THEN
+            CALL UNAUTH.RECORD.WRITE
+REM >       IF MESSAGE NE "ERROR" THEN
+REM >          GOSUB AFTER.UNAU.WRITE          ;* Special Processing after write
+REM >       END
+         END
+
+      END
+
+      IF MESSAGE EQ 'AUT' THEN
+REM >    GOSUB AUTH.CROSS.VALIDATION          ;* Special Cross Validation
+REM >    IF NOT(ERROR) THEN
+REM >       GOSUB BEFORE.AUTH.WRITE         ;* Special Processing before write
+REM >    END
+
+         IF NOT(V$ERROR) THEN
+
+            CALL AUTH.RECORD.WRITE
+
+REM >       IF MESSAGE NE "ERROR" THEN
+REM >          GOSUB AFTER.AUTH.WRITE          ;* Special Processing after write
+REM >       END
+         END
+
+      END
+
+      RETURN
+
+*************************************************************************
+
+PROCESS.DISPLAY:
+
+* Display the record fields.
+
+      IF SCREEN.MODE EQ 'MULTI' THEN
+         CALL FIELD.MULTI.DISPLAY
+      END ELSE
+         CALL FIELD.DISPLAY
+      END
+
+      RETURN
+
+*************************************************************************
+*                      Special Tailored Subroutines                     *
+*************************************************************************
+
+CHECK.ID:
+
+* Validation and changes of the ID entered.  Set ERROR to 1 if in error.
+
+
+      RETURN
+
+*************************************************************************
+
+CHECK.RECORD:
+
+* Validation and changes of the Record.  Set ERROR to 1 if in error.
+
+
+      RETURN
+
+*************************************************************************
+
+CHECK.FIELDS:
+
+      BEGIN CASE
+         CASE AF = DSP.RENEW.BEF.MAT
+            IF NOT(COMI[1] MATCH 'D':VM:'W':VM:'M':VM:'Y') THEN
+               E = 'VALID IS nnx WHERE nnn IS NUMBER AND X IS D,W,M OR Y'
+            END
+      END CASE
+      IF E THEN
+         T.SEQU = "IFLD"
+         CALL ERR
+      END
+
+      RETURN
+
+*************************************************************************
+
+CROSS.VALIDATION:
+
+*
+      V$ERROR = ''
+      ETEXT = ''
+      TEXT = ''
+*
+REM > CALL XX.CROSS.VALIDATION
+*
+      IF END.ERROR THEN                  ; * Cross validation error
+         RETURN                          ; * Back to field input via UNAUTH.RECORD.WRITE
+      END
+*
+*  Overrides should reside here.
+*
+REM > CALL XX.OVERRIDE
+*
+
+*
+      IF TEXT = "NO" THEN                ; * Said NO to override
+         V$ERROR = 1
+         MESSAGE = "ERROR"               ; * Back to field input
+         RETURN
+      END
+*
+*  Contract processing code should reside here.
+*
+REM > CALL XX.         ;* Accounting, Schedule processing etc etc
+
+      IF TEXT = "NO" THEN                ; * Said No to override
+         CALL TRANSACTION.ABORT          ; * Cancel current transaction
+         V$ERROR = 1
+         MESSAGE = "ERROR"               ; * Back to field input
+         RETURN
+      END
+
+*
+* Additional updates should be performed here
+*
+REM > CALL XX...
+
+      RETURN
+
+*************************************************************************
+
+AUTH.CROSS.VALIDATION:
+
+
+      RETURN
+
+*************************************************************************
+
+CHECK.DELETE:
+
+
+      RETURN
+
+*************************************************************************
+
+CHECK.REVERSAL:
+
+
+      RETURN
+
+*************************************************************************
+
+BEFORE.UNAU.WRITE:
+
+
+      RETURN
+
+*************************************************************************
+
+AFTER.UNAU.WRITE:
+
+
+      RETURN
+
+*************************************************************************
+
+AFTER.AUTH.WRITE:
+
+
+      RETURN
+
+*************************************************************************
+
+BEFORE.AUTH.WRITE:
+
+      BEGIN CASE
+         CASE R.NEW(V-8)[1,3] = "INA"    ; * Record status
+REM > CALL XX.AUTHORISATION
+         CASE R.NEW(V-8)[1,3] = "RNA"    ; * Record status
+REM > CALL XX.REVERSAL
+
+      END CASE
+*
+* If there are any OVERRIDES a call to EXCEPTION.LOG should be made
+*
+* IF R.NEW(V-9) THEN
+*    EXCEP.CODE = "110" ; EXCEP.MESSAGE = "OVERRIDE CONDITION"
+*    GOSUB EXCEPTION.MESSAGE
+* END
+*
+
+      RETURN
+
+*************************************************************************
+
+CHECK.FUNCTION:
+
+* Validation of function entered.  Set FUNCTION to null if in error.
+
+      IF INDEX('V',V$FUNCTION,1) THEN
+         E = 'FUNCTION NOT ALLOWED FOR THIS APPLICATION'
+         CALL ERR
+         V$FUNCTION = ''
+      END
+
+      RETURN
+
+*************************************************************************
+*
+EXCEPTION.MESSAGE:
+*
+      CALL EXCEPTION.LOG("U",
+         APP.CODE,
+         APPLICATION,
+         APPLICATION,
+         EXCEP.CODE,
+         "",
+         FULL.FNAME,
+         ID.NEW,
+         R.NEW(V-7),
+         EXCEP.MESSAGE,
+         ACCT.OFFICER)
+*
+      RETURN
+
+*************************************************************************
+
+INITIALISE:
+
+      APP.CODE = ""                      ; * Set to product code ; e.g FT, FX
+      ACCT.OFFICER = ""                  ; * Used in call to EXCEPTION. Should be relevant A/O
+      EXCEP.CODE = ""
+
+      RETURN
+
+*************************************************************************
+
+DEFINE.PARAMETERS:* SEE 'I_RULES' FOR DESCRIPTIONS *
+
+      MAT F = "" ; MAT N = "" ; MAT T = ""
+      MAT CHECKFILE = "" ; MAT CONCATFILE = ""
+      ID.CHECKFILE = "" ; ID.CONCATFILE = ""
+
+      ID.F = "DSP.PARAM.ID" ; ID.N = "11.1" ; ID.T = "COM"
+      ID.CHECKFILE = 'COMPANY':FM:EB.COM.COMPANY.NAME:FM:'L.A'
+
+      Z = 0
+
+      Z+=1 ; F(Z) = "CURRENCY" ; N(Z) = "3.3" ; T(Z) = "CCY"
+      T(Z)<3> = "NOCHANGE"
+      CHECKFILE(Z) = "CURRENCY":FM:EB.CUR.CCY.NAME:FM:'L.A'
+
+      Z+=1 ; F(Z) = "CURRENCY.MARKET" ; N(Z) = "1" ; T(Z) = ""
+      T(Z)<3> = 'NOCHANGE'
+      CHECKFILE(Z) = 'CURRENCY.MARKET':FM:EB.CMA.DESCRIPTION
+
+      Z+=1 ; F(Z) = "ACCT.DR.TRAN" ; N(Z) = "3.1" ; T(Z) = ""
+      CHECKFILE(Z) = "TRANSACTION":FM:AC.TRA.NARRATIVE:FM:"L.A"
+
+      Z+=1 ; F(Z) = "ACCT.CR.TRAN" ; N(Z) = "3.1" ; T(Z) = ""
+      CHECKFILE(Z) = "TRANSACTION":FM:AC.TRA.NARRATIVE:FM:"L.A"
+
+      Z+=1 ; F(Z) = "MGMT.FEE.CATEGORY" ; N(Z) = "6.1" ; T(Z) = ""
+      CHECKFILE(Z) = "CATEGORY":FM:EB.CAT.DESCRIPTION:FM:'L.A'
+
+      Z+=1 ; F(Z) = "MGMT.FEE.ACCOUNT" ; N(Z) = "16.1" ; T(Z) = "ANT"
+      CHECKFILE(Z) = "ACCOUNT":FM:AC.ACCOUNT.TITLE.1:FM:".A"
+
+      Z+=1 ; F(Z) = "MM.DEPO.CAT" ; N(Z) = "6.1" ; T(Z) = ""
+      CHECKFILE(Z) = "CATEGORY":FM:EB.CAT.DESCRIPTION:FM:'L.A'
+
+      Z+=1 ; F(Z) = "MINIMUM.INV" ; N(Z) = "20.1" ; T(Z) = "AMT"
+
+      * Customer's blocked amt local ref field position in the CUSTOMER file
+      Z+=1 ; F(Z) = "CUS.BLKAMT.LREF" ; N(Z) = "3.1" ; T(Z) = ""
+
+      * Investment order local ref field position in the Money market file
+      Z+=1 ; F(Z) = "MM.INVORD.LREF" ; N(Z) = "3.1" ; T(Z) = ""
+
+      * Renewal condition local ref field position in the CUSTOMER file
+      Z+=1 ; F(Z) = "REN.COND.LREF" ; N(Z) = "3.1" ; T(Z) = ""
+
+      * Position offset in the ID to be incremented by 1
+      Z+=1 ; F(Z) = "INCR.ID.POSN" ; N(Z) = "2.1" ; T(Z) = ""
+
+      * Record key in the AUTO.ID.START to be read when determining the
+      * starting transaction reference for an investment order.
+      Z+=1 ; F(Z) = "AUTO.ID.START" ; N(Z) = "14.1" ; T(Z) = "S"
+      CHECKFILE(Z) = 'AUTO.ID.START':FM:AUTID.DESCRIPTION:FM:'L.A'
+
+      * IS Contract local ref field position in the money market file
+      Z+=1 ; F(Z) = 'MM.ISCONT.LREF' ; N(Z) = '3.1' ; T(Z) = ''
+
+      * IS Contract local ref field position in the IS.CONTRACTS file
+      Z+=1 ; F(Z) = 'IS.ISCONT.LREF' ; N(Z) = '3.1' ; T(Z) = ''
+
+      * charge code to be used for money market contracts
+      Z+=1 ; F(Z) = 'XX.MMKT.CHG.CODE' ; N(Z) = '10.1' ; T(Z) = 'A'
+      CHECKFILE(Z) = 'FT.COMMISSION.TYPE':FM:FT4.DESCRIPTION:FM:'L.A'
+
+      * charge liquidation account for money market contracts
+      Z+=1 ; F(Z) = 'MM.CHG.LIQ.AC' ; N(Z) = '16.1' ; T(Z) = 'ANT'
+      CHECKFILE(Z) = "ACCOUNT":FM:AC.ACCOUNT.TITLE.1:FM:".A"
+
+      * original charge local ref posn before applying changes to the contract
+      Z+=1 ; F(Z) = 'MM.OCHG.LREF' ; N(Z) = '3.1' ; T(Z) = ''
+
+      * no. of days in a month
+      Z+=1 ; F(Z) = 'MM.INT.BASIS' ; N(Z) = '3.1' ; T(Z) = 'A'
+      CHECKFILE(Z) = 'INTEREST.BASIS':FM:IB.DESCRIPTION:FM:'L.A'
+
+      * local ref posn in the money market file for the agreed tenor
+      Z+=1 ; F(Z) = 'MM.ATENOR.LREF' ; N(Z) = '3.1' ; T(Z) = ''
+
+      * local ref posn in the money market file for the net profit
+      Z+=1 ; F(Z) = 'MM.NPROF.LREF' ; N(Z) = '3.1' ; T(Z) = ''
+
+      * deferred sale confirmation format defined in DEAL.SLIP.FORMAT
+      Z+=1 ; F(Z) = 'SLIP.CONF.FMT' ; N(Z) = '15.1' ; T(Z) = 'A'
+      CHECKFILE(Z) = 'DEAL.SLIP.FORMAT':FM:EB.DSF.DESCRIPTION:FM:'L.A'
+
+      * data capture transaction code used for DR/CR
+      Z+=1 ; F(Z) = 'DC.TRAN.CODE.DB' ; N(Z) = '3.1' ; T(Z) = 'A'
+      CHECKFILE(Z) = 'TRANSACTION':FM:AC.TRA.NARRATIVE:FM:'L.A'
+
+      Z+=1 ; F(Z) = 'DC.TRAN.CODE.CR' ; N(Z) = '3.1' ; T(Z) = 'A'
+      CHECKFILE(Z) = 'TRANSACTION':FM:AC.TRA.NARRATIVE:FM:'L.A'
+
+      * number of days that a deferred transaction is renewed before maturity
+      Z+=1 ; F(Z) = 'RENEW.BEF.MAT' ; N(Z) = '4.1.C' ; T(Z) = 'A'
+
+      * internal interest liquidation account
+      Z+=1 ; F(Z) = "INT.LIQ.ACCT" ; N(Z) = "16.1" ; T(Z) = "ANT"
+      CHECKFILE(Z) = "ACCOUNT":FM:AC.ACCOUNT.TITLE.1:FM:".A"
+
+      * transaction code used for posting the interest on liquidation
+      Z+=1 ; F(Z) = 'INT.DR.TRAN' ; N(Z) = '3.1' ; T(Z) = 'A'
+      CHECKFILE(Z) = 'TRANSACTION':FM:AC.TRA.NARRATIVE:FM:'L.A'
+
+      Z+=1 ; F(Z) = 'INT.CR.TRAN' ; N(Z) = '3.1' ; T(Z) = 'A'
+      CHECKFILE(Z) = 'TRANSACTION':FM:AC.TRA.NARRATIVE:FM:'L.A'
+
+      * local ref field posns for the specific mgmt and preterm fee rates
+      * for the customer
+      Z+=1 ; F(Z) = 'CUS.MGMT.LREF' ; N(Z) = '3.1' ; T(Z) = 'A'
+      Z+=1 ; F(Z) = 'CUS.PRET.LREF' ; N(Z) = '3.1' ; T(Z) = 'A'
+
+      V = Z + 9
+
+      RETURN
+
+*************************************************************************
+   END
