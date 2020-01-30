@@ -1,0 +1,20 @@
+    SUBROUTINE E.IS.FWL.PAY.SUM
+
+    $INSERT I_COMMON
+    $INSERT I_EQUATE
+    $INSERT I_ENQUIRY.COMMON
+
+    BEGIN CASE
+    CASE O.DATA EQ "NEW"
+        O.DATA = "New Forward Lease"
+    CASE O.DATA EQ "NP"
+        O.DATA = "Additional Payment to Contractor"
+    CASE O.DATA EQ "CSP"
+        O.DATA = "Customer Re-payment"
+    CASE O.DATA EQ "TP"
+        O.DATA = "Payment to Third Party"
+    END CASE
+
+    RETURN
+
+END
