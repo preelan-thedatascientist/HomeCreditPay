@@ -1,0 +1,837 @@
+ $INSERT I_COMMON
+    $INSERT I_EQUATE
+    $INSERT I_F.COMPANY
+    $INSERT I_F.USER
+    $INSERT I_RC.COMMON
+    $INSERT I_F.REPORT.CONTROL
+    $INSERT I_F.DE.FORM.TYPE
+    $INSERT I_F.STANDARD.SELECTION
+*-----------------------------------------------------------------------------
+
+    GOSUB INITIALISE
+
+    GOSUB GET.INPUT
+    LOOP
+        LINE = R.REC<1>
+    WHILE LINE <> '' DO
+        GOSUB CLEAR.COMMON    ;* Clear common for every record
+        GOSUB PRE.PROCESS
+        IF NOT(SKIP.PROCESS) THEN
+            DTEXT = "Processing.......":LINE:"                                               "
+            CRT @(1,10):DTEXT
+            CALL !HUSHIT(1)
+            GOSUB PROCESS.REQUEST
+            CALL !HUSHIT(0)
+        END
+        DEL R.REC<1>
+    REPEAT
+*
+    DTEXT = "Formatting.........                                                            "
+    CRT @(1,10):DTEXT
+
+    GOSUB WRITE.OUT.RECORD
+*
+    DTEXT = "Process Completed....Check PACS.DATA.OUT - Total ":SEQE:" Record(s) Created."
+    CRT @(1,10):DTEXT
+
+    FOR REC.CNT = 1 TO SEQE
+        DTEXT = "Record ":REC.CNT:" - ":ID.COMPANY:'.':TODAY:':':TS:'.':RECORD.ID:'-':REC.CNT
+        DISP.LINE = 11 + REC.CNT
+        CRT @(1, DISP.LINE):DTEXT
+    NEXT REC.CNT
+
+* Re-store the indirectory record in PACS.DATA.IN in Standard format, for future archive.
+    IF R.REC.SAVE THEN
+        RECORD.NAME = ID.COMPANY:'.':TODAY:'.':RECORD.ID
+        WRITE R.REC.SAVE TO F.BP.IN, RECORD.NAME  ;*Write the ammended record
+    END
+*
+    DISP.LINE = DISP.LINE + 2
+    DTEXT = "Checking OLD Records for Purging                                   "
+    CRT @(1,DISP.LINE):DTEXT
+    GOSUB DO.PURGE  ;* Check for Purging the old records
+*
+    DTEXT = "!!! Process Completed !!! Press Any Key To Exit........            "
+    CRT   DTEXT
+    INPUT YYY
+
+    PRINTER.STATUS = ""       ;* EN_20090724 S/E
+
+*-----------------------------------------------------------------------------
+PROGRAM.RETURN:
+*-----------------------------------------------------------------------------
+
+    RETURN TO PROGRAM.RETURN
+
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+INITIALISE:
+*-----------------------------------------------------------------------------
+*
+    BP.IN = 'PACS.DATA.IN' ; BP.OUT = 'PACS.DATA.OUT' ; RPT.CTRL.ID = "PACS"
+
+    SEQE  = '' ; ID.WRITE = '' ; ARRAY = '' ; R.REC.SAVE = "" ; OFS.ARRAY = ""
+
+    TIME.STAMP   = TIMEDATE()  ; TS = TIME.STAMP[1,2]:":":TIME.STAMP[4,2]
+
+    C$RPT.IN.HOLD.ID = ''     ;* Now clear this
+
+    DEFAULT.IFNO = "SPF, SYSTEM":@FM:"DATES, ":ID.COMPANY:@FM:"jdiag"
+    DISP.LINE = ''
+*
+    OPEN '',BP.OUT TO F.BP.OUT ELSE
+        EXECUTE 'CREATE.FILE PACS.DATA.OUT TYPE=UD' CAPTURING DUMMY
+        OPEN '',BP.OUT TO F.BP.OUT ELSE
+            TEXT = 'UNABLE TO OPEN ':BP.OUT
+            CALL REM
+            GOSUB PROGRAM.RETURN
+        END
+    END
+*
+    OPEN '',BP.IN TO F.BP.IN ELSE
+        EXECUTE 'CREATE.FILE PACS.DATA.IN TYPE=UD' CAPTURING DUMMY
+        OPEN '',BP.IN TO F.BP.IN ELSE
+            TEXT = 'UNABLE TO OPEN ':BP.IN
+            CALL REM
+            GOSUB PROGRAM.RETURN
+        END
+    END
+*
+    OPEN '','&HOLD&' TO F.HLD ELSE
+        TEXT = 'UNABLE TO OPEN &HOLD&'
+        CALL REM
+        GOSUB PROGRAM.RETURN
+    END
+*
+    FN.SS = 'F.STANDARD.SELECTION':FM:'NO.FATAL.ERROR'
+    FV.SS = ''
+    IF ETEXT THEN
+        TEXT = ETEXT
+        CALL REM
+        GOSUB PROGRAM.RETURN
+    END
+    R.SS = '' ; ERR.SS = ''
+*
+    FN.RPT.CTRL = 'F.REPORT.CONTROL':FM:'NO.FATAL.ERROR'
+    F.RPT.CTRL = ''
+    CALL OPF(FN.RPT.CTRL,F.RPT.CTRL)
+    IF ETEXT THEN
+        TEXT = ETEXT
+        CALL REM
+        GOSUB PROGRAM.RETURN
+    END
+    R.RPT.CTRL = '' ; ERR.RPT.CTRL = ''
+*
+    FN.DE.FRM.TYP = 'F.DE.FORM.TYPE':FM:'NO.FATAL.ERROR'
+    F.DE.FRM.TYP = ''
+    CALL OPF(FN.DE.FRM.TYP, F.DE.FRM.TYP)
+    IF ETEXT THEN
+        TEXT = ETEXT
+        CALL REM
+        GOSUB PROGRAM.RETURN
+    END
+    R.DE.FRM.TYP = '' ; ERR.DE.FRM = ''
+*
+    CALL F.READ(FN.RPT.CTRL, RPT.CTRL.ID, R.RPT.CTRL, F.RPT.CTRL, ERR.RPT.CTRL)
+    IF ERR.RPT.CTRL THEN
+        DTEXT = "!!! EB-MISS.REPORT.CTRL.REC !!! Created a NEW record With ID - PACS               "
+        CRT @(1,10):DTEXT
+
+        ARRAY<-1> = ""
+        ARRAY<-1> = "!!! EB-MISS.REPORT.CTRL.REC !!! Created a NEW record With ID - PACS"
+        R.RPT.CTRL<RCF.DESC>                = "PACS - STANDARD RECORD FOR P-FUNCTION OUTPUT"
+        R.RPT.CTRL<RCF.SHORT.DESC>          = "PACS - P-FUNCTION SCREEN OUTPUT"
+        R.RPT.CTRL<RCF.FORM.NAME>           = "PACS"
+        R.RPT.CTRL<RCF.MICROFICHE.OUTPUT>   = "N"
+        R.RPT.CTRL<RCF.BATCH.ONLY.RPT>      = "N"
+        R.RPT.CTRL<RCF.COPIES.ONLY>         = "Y"
+        SS.ID = 'REPORT.CONTROL'
+        MATPARSE R.NEW FROM R.RPT.CTRL
+        GOSUB POPULATE.AUDIT.FIELDS
+        MATBUILD R.RPT.CTRL FROM R.NEW
+        WRITE R.RPT.CTRL TO F.RPT.CTRL, RPT.CTRL.ID         ;* Write the NEW record.
+    END
+*
+    DE.FRM.ID = R.RPT.CTRL<RCF.FORM.NAME>
+
+    CALL F.READ(FN.DE.FRM.TYP, DE.FRM.ID, R.DE.FRM.TYP, F.DE.FRM.TYP, ERR.DE.FRM)
+
+    IF ERR.DE.FRM THEN
+        DTEXT = "!!! EB-MISS.DE.FORM.TYPE.REC !!! Created a NEW record With ID - PACS              "
+        CRT @(1,10):DTEXT
+
+        ARRAY<-1> = ""
+        ARRAY<-1> = "!!! EB-MISS.DE.FORM.TYPE.REC !!! Created a NEW record With ID - PACS"
+        R.DE.FRM.TYP<DE.TYP.DESCRIPTION>     = "PACS - Standard landscape form"
+        R.DE.FRM.TYP<DE.TYP.FORM.DEPTH>      = 999
+        R.DE.FRM.TYP<DE.TYP.TOP.MARGIN>      = 0
+        R.DE.FRM.TYP<DE.TYP.BOTTOM.MARGIN>   = 0
+        MATPARSE R.NEW FROM R.DE.FRM.TYP
+        GOSUB POPULATE.AUDIT.FIELDS
+        MATBUILD R.DE.FRM.TYP FROM R.NEW
+        WRITE R.DE.FRM.TYP TO F.DE.FRM.TYP,DE.FRM.ID        ;* Write the NEW record.
+    END
+*
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+POPULATE.AUDIT.FIELDS:
+*-----------------------------------------------------------------------------
+
+    CALL F.READ(FN.SS, SS.ID, R.SS, FV.SS, SS.ERR)
+
+    FINDSTR 'AUDIT.DATE.TIME' IN R.SS<SSL.SYS.FIELD.NAME> SETTING SS.FM, SS.VM, SS.SM THEN
+        V = R.SS<SSL.SYS.FIELD.NO, SS.VM, 1>
+    END
+
+    R.NEW(V-7) = "1"
+    R.NEW(V-6) = TNO:'_':OPERATOR:'_I'
+    X = OCONV(DATE(),"D-")
+    X = X[9,2]:X[1,2]:X[4,2]:TIME.STAMP[1,2]:TIME.STAMP[4,2]
+    R.NEW(V-5) = X
+    R.NEW(V-4) = TNO:'_':OPERATOR
+    R.NEW(V-3) = ID.COMPANY
+    R.NEW(V-2) = R.USER<EB.USE.DEPARTMENT.CODE>
+
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+GET.INPUT:
+*-----------------------------------------------------------------------------
+*
+    LOCATE C.U IN T.CONTROLWORD<1> SETTING X ELSE
+        T.CONTROLWORD<X> = C.U
+    END
+*
+    DTEXT = "INPUT Transaction/Contract/Arrangement ID or Record Name...."
+    CRT   DTEXT
+    INPUT RECORD.ID
+
+    IF TRIM(RECORD.ID) = '' OR RECORD.ID = C.U THEN
+        GOSUB PROGRAM.RETURN
+    END
+*
+* Check whether Application wagon is complied.
+    IF RECORD.ID[1,6] EQ "POSTSC" THEN  ;* Some Special Case
+        APPL.RTN = "EB.PRINT.RECORD.SC"
+    END ELSE
+        APPL.RTN = "EB.PRINT.RECORD.":RECORD.ID[1,2]
+    END
+
+    CALL CHECK.ROUTINE.EXIST(APPL.RTN, COMPILED.OR.NOT, RETURN.INFO)
+
+    IF COMPILED.OR.NOT THEN
+        CALL @APPL.RTN(RECORD.ID, R.REC)
+    END ELSE
+        OPEN '',BP.IN TO F.BP.IN ELSE
+            TEXT = 'UNABLE TO OPEN ':BP.IN
+            CALL REM
+            GOSUB PROGRAM.RETURN
+        END
+
+        READ R.REC FROM F.BP.IN, RECORD.ID ELSE
+            TEXT = 'EB-MISS.REC or APP.RTN &':FM:RECORD.ID
+            CALL REM
+            GOSUB PROGRAM.RETURN
+        END
+        R.REC.SAVE = R.REC    ;* Save this as of now
+        DELETE F.BP.IN,RECORD.ID        ;* Delete the existing one
+    END
+
+    IF NOT(R.REC.SAVE) THEN R.REC = DEFAULT.IFNO:@FM:R.REC
+
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+PRE.PROCESS:
+*-----------------------------------------------------------------------------
+
+    BEGIN CASE
+    CASE LINE['-',1,1] EQ "ERR"
+        ARRAY<-1> = ' ':FM:' ':FM:LINE
+        SKIP.PROCESS = 1
+
+    CASE LINE['-',1,1] EQ "OFS"
+        OFS.ARRAY<-1> = LINE['-',2,999]
+        SKIP.PROCESS  = 1
+
+    CASE NOT(INDEX(LINE,',',1))
+        TEXT = 'INVALID FORMAT ':LINE:' L.no ':LINE
+        ARRAY<-1> = ' ':FM:' ':FM:TEXT
+        SKIP.PROCESS = 1
+
+    CASE 1
+        APP         = TRIM(LINE[',',1,1])         ;* EN_20080415 <Start>
+        IF APP = 'VERSION' THEN
+
+            APP.ID = TRIM(LINE[',',2,1])
+            VER.ID = TRIM(LINE[',',3,1])
+
+            REC.ID = APP.ID:",":VER.ID
+            IF TRIM(LINE[',',4,1]) = 'HIS' THEN
+                HIS.MARKER = 1
+            END ELSE
+                HIS.MARKER = 0
+            END
+        END ELSE
+            REC.ID      = TRIM(LINE[',',2,1])
+
+            IF TRIM(LINE[',',3,1]) = 'HIS' THEN
+                HIS.MARKER = 1
+            END ELSE
+                HIS.MARKER = 0
+            END
+        END
+        IF (APP EQ 'jshow') OR (APP EQ 'jdiag') OR (APP EQ 'tShow') OR (APP EQ 'tDiag') THEN        ;* EN_20090428/EN_20160909 <Start>
+
+            IF SYSTEM(1021)[1,4] = "TAFJ" THEN    ;*  if system running in tafj
+                TSHOW.1 = 1
+            END ELSE
+                JSHOW.1 = 1
+            END
+
+        END ELSE
+            JSHOW.1 = ''
+            TSHOW.1 = ''
+            GOSUB PRE.APP.CHECK
+        END         ;* EN_20080415/EN_20160909 <End>
+    END CASE
+
+    RETURN
+
+*-----------------------------------------------------------------------------
+PRE.APP.CHECK:
+*-----------------------------------------------------------------------------
+
+    COMI = APP      ;* Application
+    ETEXT = '' ; PLAIN.RECORD = 0       ;* Reset this for every cycle
+
+    CALL VALIDATE.APPLICATION
+
+    IF ETEXT THEN
+* EN_20080415 <Start>
+        GOSUB CHECK.FILE.CONTROL        ;* Check for Table Type files
+        IF ETEXT THEN
+            ARRAY<-1> = ' ':FM:' ':FM:ETEXT:' - ':LINE:' L.no ':LINE
+        END
+        RETURN      ;* Return here as this is flat file, not T24 Application
+* EN_20080415 <End>
+    END
+
+    IF PGM.VERSION <> '' THEN
+        ETEXT = 'ERROR'
+        ARRAY<-1> = ' ':FM:' ':FM:'VERIONS NOT ALLOWDED L.no ':LINE
+        RETURN
+    END
+
+    IF NOT(PGM.TYPE[1,1] MATCHES 'H':VM:'U':VM:'L':VM:'T':VM:'W':VM:'D') THEN
+        ETEXT = 'ERROR'
+        ARRAY<-1> = ' ':FM:' ':FM:'APPLICATION NOT ALLOWDED L.no ':LINE
+        RETURN
+    END
+
+    APP = COMI      ;* Valid Application
+
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+PROCESS.REQUEST:
+*-----------------------------------------------------------------------------
+
+* BG_20090122 <Start>
+    BEGIN CASE
+    CASE JSHOW.1    ;* EN_20090428 S
+        GOSUB PRINT.JSHOW     ;* EN_20090428 E
+
+    CASE TSHOW.1    ;* EN_20160909 S
+        GOSUB PRINT.TSHOW     ;* EN_20160909 E
+
+    CASE PLAIN.RECORD
+        GOSUB PRINT.PLAIN.RECORD
+
+    CASE 1
+        GOSUB DO.T24.PROCESS
+    END CASE
+* BG_20090122 <End>
+
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+DO.T24.PROCESS:
+*-----------------------------------------------------------------------------
+
+    V$FUNCTION = 'GET.PARAM'
+    CALL EB.EXECUTE.APPLICATION(APPLICATION)
+
+    CALL MATRIX.UPDATE
+*
+    IF PGM.TYPE[1,1] EQ 'H' AND HIS.MARKER THEN   ;* Only for 'H' type files and 'HIS' marker
+        GOSUB DO.INTREM.PROCESS
+        REC.ID = REC.ID.LIST
+    END
+
+    LOOP
+        V$FUNCTION = 'P'      ;* Set it to NULL
+        REMOVE INPUT.BUFFER FROM REC.ID SETTING ID.ERR      ;* Record ID
+    WHILE INPUT.BUFFER:ID.ERR
+*
+        CALL RECORDID.INPUT
+*
+        IF E THEN
+            ETEXT = E
+            ARRAY<-1> = ' ':FM:' ':FM:'ERROR - "':E:'" - ':LINE:' L.no ':LINE
+            RETURN
+        END
+*
+        HUSH ON ; CALL RECORD.READ ; HUSH OFF
+*
+        IF MESSAGE EQ 'REPEAT' THEN
+            ETEXT = 'ERROR'
+            ARRAY<-1> = ' ':FM:' ':FM:'ERROR - "RECORD MISSING" ':LINE:' L.no ':LINE
+            RETURN
+        END
+
+        CALL MATRIX.ALTER
+
+        GOSUB PRINT.RECORD
+    REPEAT
+
+    RETURN
+
+
+
+*-----------------------------------------------------------------------------
+DO.INTREM.PROCESS:
+*-----------------------------------------------------------------------------
+
+* EN_20080415 <Start>
+
+    HIS.ST.CURR = "" ; HIS.ED.CURR = ""
+    REC.ID.LIST = ""
+    FN.APP = FULL.FNAME:"$HIS"          ;* FULL.FNAME, F.FILE$HIS are common
+    FV.APP = F.FILE$HIS       ;* got assigned in MATRIX.UPDATE
+    HIS.REC.ID = REC.ID
+
+    CALL F.READ.HISTORY(FN.APP, HIS.REC.ID, R.DUMMY, FV.APP, HIS.ERR)
+    IF NOT(HIS.ERR) THEN
+        LAST.HIS.CURR = HIS.REC.ID[';',2,1]
+        IF APP = 'VERSION' THEN
+            HIS.NOS = TRIM(LINE[',',5,1])
+        END ELSE
+            HIS.NOS = TRIM(LINE[',',4,1])
+        END
+        BEGIN CASE
+        CASE INDEX(HIS.NOS, "-", 1)
+            HIS.ST.CURR = FIELD(HIS.NOS, "-", 1)
+            IF HIS.ST.CURR GT LAST.HIS.CURR THEN HIS.ST.CURR = LAST.HIS.CURR
+            HIS.ED.CURR = FIELD(HIS.NOS, "-", 2)
+            IF HIS.ED.CURR GT LAST.HIS.CURR THEN HIS.ED.CURR = LAST.HIS.CURR
+
+        CASE HIS.NOS[1,1] EQ "F"
+            HIS.ST.CURR = 1
+            HIS.ED.CURR = TRIM(HIS.NOS[2, 999])
+            IF HIS.ED.CURR GT LAST.HIS.CURR THEN HIS.ED.CURR = LAST.HIS.CURR
+
+        CASE HIS.NOS[1,1] EQ "L"
+            HIS.ST.CURR = LAST.HIS.CURR - TRIM(HIS.NOS[2, 999])
+            IF HIS.ST.CURR LT 1 THEN HIS.ST.CURR = 1
+            HIS.ED.CURR = LAST.HIS.CURR
+
+        CASE ISDIGIT(HIS.NOS)
+            IF HIS.NOS LE LAST.HIS.CURR THEN
+                HIS.ST.CURR = HIS.NOS
+                HIS.ED.CURR = HIS.NOS
+            END
+        END CASE
+
+        IF (HIS.ST.CURR AND HIS.ED.CURR) AND (HIS.ST.CURR LE HIS.ED.CURR) THEN
+            FOR INS.CNT = HIS.ST.CURR TO HIS.ED.CURR
+                REC.ID.LIST<-1> = REC.ID:';':INS.CNT
+            NEXT INS.CNT
+        END ELSE
+            ARRAY<-1> = ' ':FM:' ':FM:'INCORRECT HISTORY FORMAT L.no ':LINE
+        END
+    END ELSE        ;* Smart Pack 4/15/2014 fix start
+        ARRAY<-1> = ' ':FM:' ':FM:'ERROR - "RECORD MISSING " ':APP:FM:HIS.ERR
+    END   ;* 4/15/2014 fix end
+* EN_20080415 <End>
+
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+PRINT.RECORD:
+*-----------------------------------------------------------------------------
+
+* Now Print the record
+* BG_20090122 <Start>
+    IF ETEXT THEN
+        RETURN
+    END
+* BG_20090122 <End>
+
+    CALL PRINTER.ON('P.FUNCTION',0)
+    PRINT
+    PRINT "==============================================="
+    PRINT APPLICATION
+    PRINT "==============================================="
+    CALL PRINTER.OFF
+
+* BG_20080604 <Start>
+    IF PGM.TYPE[1,1] EQ 'T' THEN
+        CALL TABLE.DISPLAY
+    END ELSE
+        CALL FIELD.DISPLAY
+    END
+* BG_20080604 <End>
+
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+CLEAR.COMMON:
+*-----------------------------------------------------------------------------
+* Don't know whether this is required ??? but let's have
+
+    MAT R.NEW    = "" ; MAT R.OLD  = "" ; MAT R.NEW.LAST = ""
+    T.AUTH.PAGE  = "" ; T.ENRI     = "" ; T.ETEXT        = ""
+    T.FUNCTION   = "" ; T.LOCREF   = "" ; T.MULTI.PAGE   = ""
+    PGM.VERSION  = "" ; V$FUNCTION = "" ; T.FIELDNO      = ""
+    COMI.DEFAULT = "" ; COMI.ENRI  = "" ; MESSAGE        = ""
+    ID.NEW       = "" ; ID.OLD     = "" ; SKIP.PROCESS  = ""
+    ETEXT        = "" ; TEXT       = "" ; E = ''
+
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+WRITE.OUT.RECORD:
+*-----------------------------------------------------------------------------
+* Collect and write down the details
+* BG_20090122 <Start>
+*
+    SLEEP 2         ;* Sleep couple of sec before extracting the data
+* BG_20090122 <End>
+*
+    HLD.ID = C$RPT.IN.HOLD.ID<1>        ;* HOLD ID Generated
+*
+    CALL PRINTER.CLOSE('P.FUNCTION',0,OPERATOR)
+
+    IF TRIM(HLD.ID) = '' THEN
+        IF ARRAY THEN         ;* Smart Pack 4/15/2014 fix start
+            GOSUB FLUSH.RECORD
+        END         ;*4/15/2014 fix end
+        RETURN      ;* Nothing to do
+    END
+*
+
+    READ R.HOLD FROM F.HLD,HLD.ID ELSE
+        RETURN      ;* Nothing to do
+    END
+
+*
+    ARRAY<-1> = ' '
+    ARRAY<-1> = ' ========================================================================'
+    ARRAY<-1> = ' '
+
+    CNT.HOLD = DCOUNT(R.HOLD, @FM)
+
+*   LOOP                                         ; * Smart Pack 4/15/2014 fix Start
+*       REMOVE CONT FROM R.HOLD SETTING CONT.POS
+*   WHILE CONT:CONT.POS DO
+
+    FOR HH = 1 TO CNT.HOLD
+        CONT = R.HOLD<HH>     ;* 4/15/2014 fix end
+        BEGIN CASE
+        CASE INDEX(CONT,CHARX(12),1)    ;* line feed
+            IF CONT[1,1] NE CHARX(12) THEN
+                ARRAY<-1> = CONT[1,INDEX(CONT,CHARX(12),1)-1]
+            END
+        CASE INDEX(CONT,'Page',1)
+        CASE TRIM(CONT[1,4]) = 'Area'
+        CASE TRIM(CONT[1,2]) = 'To'
+        CASE NOT(CONT)        ;* Smart Pack 4/15/2014 fix
+        CASE 1
+            ARRAY<-1> = CONT
+        END CASE
+        IF DCOUNT(ARRAY,FM) GE 4000 THEN
+            ARRAY<-1> = ' '
+            ARRAY<-1> = FMT('Page to be continued','80L')
+            GOSUB FLUSH.RECORD
+        END
+    NEXT HH         ;* Smart Pack 4/15/2014 fix start
+*    REPEAT                   ; * 4/15/2014 fix end
+
+* Delete the HOLD record.
+    DELETE F.HLD, HLD.ID
+
+* Pring OFS Strings:
+
+    ARRAY<-1> = ' '
+    ARRAY<-1> = ' ======================OFS Strings======================================='
+    ARRAY<-1> = ' '
+    LOOP
+        REMOVE CONT FROM OFS.ARRAY SETTING CONT.POS
+    WHILE CONT:CONT.POS
+        ARRAY<-1> = CONT
+        IF DCOUNT(ARRAY,FM) GE 4000 THEN
+            ARRAY<-1> = ' '
+            ARRAY<-1> = FMT('Page to be continued','80L')
+            GOSUB FLUSH.RECORD
+        END
+    REPEAT
+
+    ARRAY<-1> = ' '
+    ARRAY<-1> = ' ========================================================================'
+    ARRAY<-1> = ' '
+*
+    IF ARRAY THEN
+        GOSUB FLUSH.RECORD
+    END
+*
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+FLUSH.RECORD:
+*-----------------------------------------------------------------------------
+
+    SEQE = SEQE + 1
+
+    ID.WRITE = ID.COMPANY:'.':TODAY:':':TS:'.':RECORD.ID:'-':SEQE
+    WRITE ARRAY TO F.BP.OUT, ID.WRITE
+    ARRAY = ''
+
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+DO.PURGE:
+*-----------------------------------------------------------------------------
+* Do this process once in a day
+
+*
+    READ PRG.DATE FROM F.LOCKING,'PRG.EB.PRINT.RECORD' ELSE
+        PRG.DATE = ''
+    END
+*
+    IF PRG.DATE <> '' AND PRG.DATE EQ TODAY THEN
+        RETURN      ;* Already purged
+    END
+*
+    CALL DISPLAY.MESSAGE('PURGING',2)
+*
+* Purge data with age LE 5 Working days
+*
+    CNRG = R.COMPANY(EB.COM.LOCAL.COUNTRY):R.COMPANY(EB.COM.LOCAL.REGION)[1,2]
+    CALL WORKING.DAY('S',TODAY,'-','5W','B',CNRG,'',FIVE.DAYS.BFR,'','')
+
+    SEL.CMD = 'SELECT PACS.DATA.IN WITH EVAL':DQUOTE("@ID['.',2,1]"):' LE ':DQUOTE(FIVE.DAYS.BFR)
+    EXECUTE SEL.CMD CAPTURING NOTHING
+    READLIST BP.IN.LIST ELSE
+        BP.IN.LIST = ''
+    END
+*
+    SEL.CMD = 'SELECT PACS.DATA.OUT WITH EVAL':DQUOTE("@ID['.',2,1]"):' LE ':DQUOTE(FIVE.DAYS.BFR)
+    EXECUTE SEL.CMD CAPTURING NOTHING
+    READLIST BP.OUT.LIST ELSE
+        BP.OUT.LIST = ''
+    END
+*
+    LOOP
+        REMOVE BP.IN.ID FROM BP.IN.LIST SETTING IN.POS
+        REMOVE BP.OUT.ID FROM BP.OUT.LIST SETTING OUT.POS
+    WHILE BP.IN.ID:IN.POS OR BP.OUT.ID:OUT.POS DO
+*
+        IF BP.IN.ID:IN.POS THEN
+            DELETE F.BP.IN, BP.IN.ID
+        END
+*
+        IF BP.OUT.ID:OUT.POS THEN
+            DELETE F.BP.OUT, BP.OUT.ID
+        END
+*
+    REPEAT
+*
+* Update to TODAY as we need not to do the same process again
+*
+    WRITE TODAY TO F.LOCKING,'PRG.EB.PRINT.RECORD'
+
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+CHECK.FILE.CONTROL:
+*-----------------------------------------------------------------------------
+*
+* New Para to check File Control exist for the Mentioned File, if so
+* signal to print the record.
+*
+* EN_20080415 <Start>
+
+    FN.FILE = 'F.':APP:FM:'NO.FATAL.ERROR'
+    F.FILE = ''
+    ETEXT = ''      ;* Set to NULL
+*
+    CALL OPF(FN.FILE,F.FILE)
+    IF ETEXT = '' THEN
+        PLAIN.RECORD = 1
+    END
+*
+    IF PLAIN.RECORD AND (HIS.MARKER OR HIS.NOS) THEN
+        ETEXT = 'HISTORY RECORDS CANNOT BE FETCHED AUTOMATICALLY'
+        PLAIN.RECORD = 0      ;* Reset
+    END
+*
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+PRINT.PLAIN.RECORD:
+*-----------------------------------------------------------------------------
+* First set the printer
+*
+    CALL PRINTER.ON('P.FUNCTION',0)
+*
+* Now start Printing
+*
+    READ R.RECORD FROM F.FILE,REC.ID ELSE
+        ARRAY<-1> = 'RECORD MISSING - FILE ':FN.FILE:' CONTRACT ': REC.ID
+        RETURN
+    END
+*
+    PRINT ; PRINT
+    PRINT STR('=',80)
+    PRINT SPACE(10):'APPLICATION':SPACE(5):APP
+    PRINT SPACE(10):'ID.........':SPACE(5):REC.ID
+    PRINT STR('=',80)
+    NO.LINES = DCOUNT(R.RECORD,FM)
+    FOR I = 1 TO NO.LINES
+        NO.VM = DCOUNT(R.RECORD<I>,VM)
+        IF NO.VM THEN
+            FOR J = 1 TO NO.VM
+                NO.SM = DCOUNT(R.RECORD<I,J>,SM)
+                IF NO.SM THEN
+                    FOR K = 1 TO NO.SM
+                        Line.Narr = 'LINE.':I:'.':J:'.':K
+                        PRINT FMT(Line.Narr,'25.L'):SPACE(4):R.RECORD<I,J,K>
+                    NEXT K
+                END ELSE
+                    Line.Narr = 'LINE.':I:'.':J
+                    PRINT FMT(Line.Narr,'25.L'):SPACE(4):R.RECORD<I,J>
+                END
+            NEXT J
+        END ELSE
+            Line.Narr = 'LINE.':I
+            PRINT FMT(Line.Narr,'25.L'):SPACE(4):R.RECORD<I>
+        END
+    NEXT I
+
+    CALL PRINTER.OFF          ;* Switch off the printer
+* EN_20080415 <End>
+    RETURN
+
+
+*-----------------------------------------------------------------------------
+PRINT.JSHOW:
+*-----------------------------------------------------------------------------
+
+    CALL PRINTER.ON('P.FUNCTION',0)     ;* EN_20090428 <Start>
+
+    BEGIN CASE
+    CASE APP EQ 'jshow'
+        PRINT
+        PRINT "==============================================="
+        PRINT "                    jshow                      "
+        PRINT "==============================================="
+        PRINT
+        EXC.CMD = "jshow -c ":REC.ID
+        EXECUTE EXC.CMD CAPTURING DUMMY
+        IF DUMMY THEN
+            PRINT EXC.CMD
+            PRINT DUMMY
+            PRINT
+        END
+
+    CASE APP EQ 'jdiag'
+        PRINT
+        PRINT "==============================================="
+        PRINT "                    jdiag                      "
+        PRINT "==============================================="
+        PRINT
+        EXECUTE 'jdiag -dv' CAPTURING DUMMY.2
+        IF DUMMY.2 THEN
+            PRINT
+            PRINT DUMMY.2
+            PRINT
+        END
+    END CASE
+
+    CALL PRINTER.OFF          ;* Switch off the printer EN_20090428 <End>
+
+    RETURN
+*-----------------------------------------------------------------------------
+PRINT.TSHOW:
+*-----------------------------------------------------------------------------
+
+    CALL PRINTER.ON('P.FUNCTION',0)     ;* EN_20090909 <Start>
+
+    OS.NAME  = SYSTEM(1017)   ;* Operating System Information
+    tafjHome = GETENV("tafj.home")
+
+    BEGIN CASE
+    CASE APP EQ 'tShow'
+        PRINT
+        PRINT "==============================================="
+        PRINT "                    tShow                      "
+        PRINT "==============================================="
+        PRINT
+*
+        IF (OS.NAME = 'WINNT') OR (OS.NAME = 'WIN95') THEN  ;* Command used in Windows
+            EXE.CMD = 'DOS -c ':tafjHome:'\bin\tShow ':REC.ID
+        END ELSE
+            EXE.CMD = 'SH -c ':tafjHome:'/bin/tShow ':REC.ID
+        END
+        EXECUTE EXE.CMD CAPTURING DUMMY.3
+        IF DUMMY.3 THEN
+            PRINT EXE.CMD
+            PRINT
+            PRINT DUMMY.3
+            PRINT
+        END
+
+    CASE APP EQ 'tDiag'
+        PRINT
+        PRINT "==============================================="
+        PRINT "                    tDiag                      "
+        PRINT "==============================================="
+        PRINT
+
+        IF OS.NAME = 'WINNT' OR OS.NAME = 'WIN95' THEN      ;* Command used in Windows
+            EXE.CMD = 'DOS -c ':tafjHome:'\bin\tDiag'
+        END ELSE
+            EXE.CMD = 'SH -c ':tafjHome:'/bin/tDiag'
+        END
+        EXECUTE EXE.CMD CAPTURING DUMMY.4
+
+        IF DUMMY.4 THEN
+            PRINT EXE.CMD
+            PRINT
+            PRINT DUMMY.4
+            PRINT
+        END
+    END CASE
+
+    CALL PRINTER.OFF          ;* Switch off the printer EN_20160909 <End>
+
+    RETURN
+*---------------------------------------------------------------------------------
+
+END
