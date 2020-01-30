@@ -1,0 +1,50 @@
+  SUBROUTINE FH.CALC.MIN.PER.INT.RATE(INTEREST.RATE,MARGIN)
+*********************************************************************
+! The above routine is attached to the PERIODIC.INTEREST application
+! This routine will be triggered during the EOD process for LD contract
+! Interest rate calculation purposes.
+*********************************************************************
+    $INSERT I_COMMON
+    $INSERT I_EQUATE
+    $INSERT I_F.LD.LOANS.AND.DEPOSITS
+    $INSERT I_F.BASIC.INTEREST
+*********************************************************************
+! Routine to be executed only during EOD
+
+    IF NOT(RUNNING.UNDER.BATCH) THEN RETURN
+    CRT 'Processing : ':ID.NEW
+    CRT 'Incoming Interest Rate : ' : INTEREST.RATE
+
+*    BEGIN CASE
+*    CASE ID.NEW ='LD0430700001'
+*        INTEREST.RATE = '4.5'
+*    CASE ID.NEW ='LD0431200005'
+*        INTEREST.RATE = '4'
+*    END CASE
+
+    GOSUB CHECK.INTEREST.RATE
+
+    CRT 'Outgoing Interest : ':INTEREST.RATE
+    RETURN
+
+********************
+CHECK.INTEREST.RATE:
+********************
+
+    FN.BASIC.INTEREST ='F.BASIC.INTEREST'
+    F.BASIC.INTEREST = ''
+    CALL OPF(FN.BASIC.INTEREST,F.BASIC.INTEREST)
+
+    INT.SPREAD = R.NEW(LD.INTEREST.SPREAD)
+    MIN.CONTRACT.RATE = R.NEW(LD.MIN.CONTRACT.RATE)
+    CONT.CCY =R.NEW(LD.CURRENCY)
+
+    IF MIN.CONTRACT.RATE NE '' AND MIN.CONTRACT.RATE GT 0 THEN
+       ACT.LD.RATE = INTEREST.RATE+INT.SPREAD
+       IF ACT.LD.RATE LT MIN.CONTRACT.RATE THEN INTEREST.RATE = MIN.CONTRACT.RATE-INT.SPREAD
+    END
+    
+    RETURN
+
+EXIT:
+END
